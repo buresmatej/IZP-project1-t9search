@@ -1,21 +1,131 @@
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 
 #define MAX_ARG_LENGTH 100
-#define MAX_NAME_LENGTH 100
-#define MAX_PHONE_LENGTH 100
-#define MAX_CONTACTS 42
+#define MAX_NAME_LENGTH 102
+#define MAX_PHONE_LENGTH 102
+#define MAX_CONTACTS 100
 
-bool is_numeric_string(char string[]);
+typedef struct {
+    char name[MAX_NAME_LENGTH];
+    char phone[MAX_PHONE_LENGTH];
+} Contact;
 
-bool is_valid_name_char(char c);
+// T9 table used for converting lowercase ASCII letters to their corresponding T9 number
+// Each index is calculated as the ASCII value of the letter minus the ASCII value of 'a'(97)
+char t9_table[] = {
+    '2', '2', '2', // a, b, c
+    '3', '3', '3', // d, e, f
+    '4', '4', '4', // g, h, i
+    '5', '5', '5', // j, k, l
+    '6', '6', '6', // m, n, o
+    '7', '7', '7', '7', // p, q, r, s
+    '8', '8', '8', // t, u, v
+    '9', '9', '9', '9', // w, x, y, z
+};
 
-int load_contact(char *name, char *phone, int name_length, int phone_length);
+bool is_numeric_string(char *string) {
+    for (int idx = 0; string[idx] != '\0'; idx++) {
+        if (!isdigit(string[idx])) {
+            return false;
+        }
+    }
+    return true;
+}
 
-bool is_number(char c);
+int load_contact(Contact *contact) {
+    char *name = contact->name;
+    char *phone = contact->phone;
+
+    if (fgets(name, MAX_NAME_LENGTH, stdin) == NULL) {
+        return -1;
+    }
+    if (fgets(phone, MAX_PHONE_LENGTH, stdin) == NULL) {
+        return 1;
+    }
+
+    if (name[strlen(name) - 1] != '\n' || phone[strlen(phone) - 1] != '\n') {
+        return 1;
+    }
+
+    name[strlen(name) - 1] = '\0';
+    phone[strlen(phone) - 1] = '\0';
+
+    if (strlen(name) == 0 || strlen(phone) == 0) {
+        return 1;
+    }
+
+    return 0;
+}
+
+
+bool is_valid_contact(Contact *contact) {
+    char *name = contact->name;
+    char *phone = contact->phone;
+
+    for (int idx = 0; name[idx] != '\0'; idx++) {
+        if (!isprint((unsigned char)name[idx])) {
+            return false;
+        }
+    }
+
+    if (strlen(phone) == 1 && phone[0] == '+') {
+        return false;
+    }
+
+    for (int idx = 0; phone[idx] != '\0'; idx++) {
+        if (phone[idx] == '+' && idx == 0) {
+            continue;
+        }
+
+        if (!isdigit((unsigned char)phone[idx])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void t9_string_to_num(char *string, char *destination) {
+    int idx = 0;
+    for (; string[idx] != '\0'; idx++) {
+        char lowercase_char = tolower(string[idx]);
+        if (lowercase_char == '+') {
+            destination[idx] = '0';
+            continue;
+        }
+        if (lowercase_char < 'a' || lowercase_char > 'z') {
+            destination[idx] = string[idx];
+            continue;
+        }
+        destination[idx] = t9_table[lowercase_char - 'a'];
+    }
+    destination[idx] = '\0';
+}
+
+bool is_match(Contact *contact, char *pattern) {
+    if (pattern == nullptr) {
+        return true;
+    }
+
+    //find in phone
+    char *name = contact->name;
+    char *phone = contact->phone;
+    char check_buffer[MAX_NAME_LENGTH];
+    t9_string_to_num(phone, check_buffer);
+    if (strstr(check_buffer, pattern) != NULL) {
+        return true;
+    }
+    t9_string_to_num(name, check_buffer);
+    if (strstr(check_buffer, pattern) != NULL) {
+        return true;
+    }
+    return false;
+}
+
 
 int main(int argc, char *argv[]) {
-    // check if the number of arguments is less than 2
+    // check if the number of arguments is more than 2
     if (argc > 2) {
         fprintf(stderr, "Invalid number of arguments. 0-1 arguments allowed.\n");
         return 1;
@@ -44,95 +154,39 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    char name[MAX_NAME_LENGTH + 1];
-    char phone[MAX_PHONE_LENGTH + 1];
-    if (load_contact(name, phone, MAX_NAME_LENGTH, MAX_PHONE_LENGTH) == -1) {
-        fprintf(stderr, "Failed to load contact.\n");
-        return 1;
-    }
-
-
-    return 0;
-}
-
-
-bool is_numeric_string(char string[]) {
-    for (int idx = 0; string[idx] != '\0'; idx++) {
-        if (!is_number(string[idx])) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool is_alpha(char c) {
-    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
-}
-
-bool is_number(char c) {
-    return c >= '0' && c <= '9';
-}
-
-
-bool is_valid_name_char(char c) {
-    if (!is_alpha(c) && !is_number(c)) {
-        return c == ' ' || c == '.' || c == ',' || c == '-';
-    }
-    return true;
-}
-
-bool is_valid_phone_char(char c) {
-    if (!is_number(c)) {
-        return c == '+';
-    }
-    return true;
-}
-
-int load_contact(char *name, char *phone, int name_length, int phone_length) {
-    char loaded_char;
-    bool loading_name = true;
-    for (int idx = 0; (loaded_char = getchar()) != EOF; idx++) {
-        //loading name
-        if (loading_name) {
-            if (idx > name_length) {
-                return -1;
-            }
-
-            if (loaded_char == '\n') {
-                name[idx] = '\0';
-                loading_name = false;
-                //reset counter for phone loading
-                idx = -1;
-                continue;
-            }
-
-            if (!is_valid_name_char(loaded_char)) {
-                return -1;
-            }
-
-            name[idx] = loaded_char;
-            continue;
+    Contact contacts[MAX_CONTACTS];
+    int contact_idx = 0;
+    int loaded_contacts = 0;
+    int return_code;
+    while ((return_code = load_contact(&contacts[contact_idx])) != -1) {
+        if (return_code == 1) {
+            fprintf(stderr, "Error loading contact.\n");
+            return 1;
         }
 
-        //loading phone
-        if (idx > phone_length) {
-            return -1;
+        if (!is_valid_contact(&contacts[contact_idx])) {
+            fprintf(stderr, "Invalid contact.\n");
+            return 1;
         }
 
-        if (loaded_char == '\n') {
-            printf("test");
-            phone[idx] = '\0';
-            break;
+        if (is_match(&contacts[contact_idx], search_pattern)) {
+            contact_idx++;
         }
 
-        if (is_valid_phone_char(loaded_char)) {
-            if (loaded_char == '+' && idx != 0) {
-                return -1;
-            }
-            phone[idx] = loaded_char;
-            continue;
+        loaded_contacts++;
+        if (loaded_contacts == MAX_CONTACTS && fgetc(stdin) != EOF) {
+            fprintf(stderr, "Contact capacity exceeded. 0 - %d contacts supported.\n", MAX_CONTACTS);
+            return 1;
         }
-        return -1;
     }
+
+    for (int idx = 0; idx < contact_idx; idx++) {
+        printf("%s, %s\n", contacts[idx].name, contacts[idx].phone);
+    }
+
+    if (contact_idx == 0) {
+        printf("Not found\n");
+    }
+
     return 0;
 }
