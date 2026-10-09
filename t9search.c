@@ -2,10 +2,11 @@
 #include <stdio.h>
 #include <string.h>
 
+#define MAX_ARG_COUNT 2
 #define MAX_ARG_LENGTH 100
 #define MAX_NAME_LENGTH 102
 #define MAX_PHONE_LENGTH 102
-#define MAX_CONTACTS 100
+#define MAX_CONTACTS 200
 
 typedef struct {
     char name[MAX_NAME_LENGTH];
@@ -34,6 +35,8 @@ bool is_numeric_string(char *string) {
     return true;
 }
 
+// reads a contact from stdin into contact buffer
+// return codes: 0 = ok, 1 = error, -1 = no contact on stdin
 int load_contact(Contact *contact) {
     char *name = contact->name;
     char *phone = contact->phone;
@@ -45,6 +48,7 @@ int load_contact(Contact *contact) {
         return 1;
     }
 
+    // check if the input exceeded the buffer capacity (\n got overwritten)
     if (name[strlen(name) - 1] != '\n' || phone[strlen(phone) - 1] != '\n') {
         return 1;
     }
@@ -52,6 +56,7 @@ int load_contact(Contact *contact) {
     name[strlen(name) - 1] = '\0';
     phone[strlen(phone) - 1] = '\0';
 
+    // check if input contained only \n\n
     if (strlen(name) == 0 || strlen(phone) == 0) {
         return 1;
     }
@@ -65,11 +70,12 @@ bool is_valid_contact(Contact *contact) {
     char *phone = contact->phone;
 
     for (int idx = 0; name[idx] != '\0'; idx++) {
-        if (!isprint((unsigned char)name[idx])) {
+        if (!isprint(name[idx])) {
             return false;
         }
     }
 
+    // '+'  cannot be standalone
     if (strlen(phone) == 1 && phone[0] == '+') {
         return false;
     }
@@ -79,21 +85,27 @@ bool is_valid_contact(Contact *contact) {
             continue;
         }
 
-        if (!isdigit((unsigned char)phone[idx])) {
+        if (!isdigit(phone[idx])) {
             return false;
         }
     }
     return true;
 }
 
+
+// saves a T9 representation of the string parameter into the destination buffer
 void t9_string_to_num(char *string, char *destination) {
+    // initialized idx outside of the for loop so i can append \0 to the end of the destination buffer later
     int idx = 0;
     for (; string[idx] != '\0'; idx++) {
         char lowercase_char = tolower(string[idx]);
+        // manually converts '+' to '0' (t9 table does not contain '+')
         if (lowercase_char == '+') {
             destination[idx] = '0';
             continue;
         }
+
+        // does not convert non letter characters
         if (lowercase_char < 'a' || lowercase_char > 'z') {
             destination[idx] = string[idx];
             continue;
@@ -108,46 +120,51 @@ bool is_match(Contact *contact, char *pattern) {
         return true;
     }
 
-    //find in phone
     char *name = contact->name;
     char *phone = contact->phone;
+    // expects name and phone have the same max length
     char check_buffer[MAX_NAME_LENGTH];
+
     t9_string_to_num(phone, check_buffer);
+    // checks if converted phone contains the pattern
     if (strstr(check_buffer, pattern) != NULL) {
         return true;
     }
+
     t9_string_to_num(name, check_buffer);
+    // checks if converted name contains the pattern
     if (strstr(check_buffer, pattern) != NULL) {
         return true;
     }
+
     return false;
 }
 
 
 int main(int argc, char *argv[]) {
     // check if the number of arguments is more than 2
-    if (argc > 2) {
+    if (argc > MAX_ARG_COUNT) {
         fprintf(stderr, "Invalid number of arguments. 0-1 arguments allowed.\n");
         return 1;
     }
 
     char *search_pattern = nullptr;
-    if (argc == 2) {
+    if (argc == MAX_ARG_COUNT) {
         search_pattern = argv[1];
 
-        //check if the first arguments is not empty
+        // check if the first arguments is not empty
         if (search_pattern[0] == '\0') {
             fprintf(stderr, "The first argument cannot be empty.\n");
             return 1;
         }
 
-        //check if the first argument is numeric
+        // check if the first argument is numeric
         if (!is_numeric_string(search_pattern)) {
             fprintf(stderr, "The first argument must be numeric.\n");
             return 1;
         }
 
-        //check if the argument length does not exceed the limit
+        // check if the argument length does not exceed the limit
         if (strlen(search_pattern) > MAX_ARG_LENGTH) {
             fprintf(stderr, "Argument is too long. 1-100 numbers allowed.\n");
             return 1;
@@ -155,36 +172,43 @@ int main(int argc, char *argv[]) {
     }
 
     Contact contacts[MAX_CONTACTS];
-    int contact_idx = 0;
+    int matching_contact_idx = 0;
     int loaded_contacts = 0;
     int return_code;
-    while ((return_code = load_contact(&contacts[contact_idx])) != -1) {
+
+    while ((return_code = load_contact(&contacts[matching_contact_idx])) != -1) {
         if (return_code == 1) {
             fprintf(stderr, "Error loading contact.\n");
             return 1;
         }
 
-        if (!is_valid_contact(&contacts[contact_idx])) {
+        if (!is_valid_contact(&contacts[matching_contact_idx])) {
             fprintf(stderr, "Invalid contact.\n");
             return 1;
         }
 
-        if (is_match(&contacts[contact_idx], search_pattern)) {
-            contact_idx++;
+        // if loaded contact matches the pattern, increment the index
+        // if not, override the contact on that index
+        if (is_match(&contacts[matching_contact_idx], search_pattern)) {
+            matching_contact_idx++;
         }
 
         loaded_contacts++;
-        if (loaded_contacts == MAX_CONTACTS && fgetc(stdin) != EOF) {
-            fprintf(stderr, "Contact capacity exceeded. 0 - %d contacts supported.\n", MAX_CONTACTS);
-            return 1;
+        if (loaded_contacts == MAX_CONTACTS) {
+            // print on stderr if theres more contacts on stdin than supported
+            if (fgetc(stdin) != EOF) {
+                fprintf(stderr, "Contact capacity exceeded. 0 - %d contacts supported.\n", MAX_CONTACTS);
+                return 1;
+            }
+            break;
         }
     }
 
-    for (int idx = 0; idx < contact_idx; idx++) {
+    for (int idx = 0; idx < matching_contact_idx; idx++) {
         printf("%s, %s\n", contacts[idx].name, contacts[idx].phone);
     }
 
-    if (contact_idx == 0) {
+    if (matching_contact_idx == 0 && search_pattern != nullptr) {
         printf("Not found\n");
     }
 
