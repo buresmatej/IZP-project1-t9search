@@ -15,7 +15,7 @@ typedef struct {
 
 // T9 table used for converting lowercase ASCII letters to their corresponding T9 number
 // Each index is calculated as the ASCII value of the letter minus the ASCII value of 'a'(97)
-char t9_table[] = {
+const char t9_table[] = {
     '2', '2', '2', // a, b, c
     '3', '3', '3', // d, e, f
     '4', '4', '4', // g, h, i
