@@ -13,19 +13,6 @@ typedef struct {
     char phone[MAX_PHONE_LENGTH];
 } Contact;
 
-// T9 table used for converting lowercase ASCII letters to their corresponding T9 number
-// Each index is calculated as the ASCII value of the letter minus the ASCII value of 'a'(97)
-const char t9_table[] = {
-    '2', '2', '2', // a, b, c
-    '3', '3', '3', // d, e, f
-    '4', '4', '4', // g, h, i
-    '5', '5', '5', // j, k, l
-    '6', '6', '6', // m, n, o
-    '7', '7', '7', '7', // p, q, r, s
-    '8', '8', '8', // t, u, v
-    '9', '9', '9', '9', // w, x, y, z
-};
-
 bool is_numeric_string(char *string) {
     for (int idx = 0; string[idx] != '\0'; idx++) {
         if (!isdigit(string[idx])) {
@@ -35,7 +22,7 @@ bool is_numeric_string(char *string) {
     return true;
 }
 
-// reads a contact from stdin into contact buffer
+// reads a contact from stdin into specified contact buffer
 // return codes: 0 = ok, 1 = error, -1 = no contact on stdin
 int load_contact(Contact *contact) {
     char *name = contact->name;
@@ -95,6 +82,19 @@ bool is_valid_contact(Contact *contact) {
 
 // saves a T9 representation of the string parameter into the destination buffer
 void t9_string_to_num(char *string, char *destination) {
+    // T9 table used for converting lowercase ASCII letters to their corresponding T9 number
+    // Each index is calculated as the ASCII value of the letter minus the ASCII value of 'a'(97)
+    char t9_table[] = {
+        '2', '2', '2', // a, b, c
+        '3', '3', '3', // d, e, f
+        '4', '4', '4', // g, h, i
+        '5', '5', '5', // j, k, l
+        '6', '6', '6', // m, n, o
+        '7', '7', '7', '7', // p, q, r, s
+        '8', '8', '8', // t, u, v
+        '9', '9', '9', '9', // w, x, y, z
+    };
+
     // initialized idx outside of the for loop so i can append \0 to the end of the destination buffer later
     int idx = 0;
     for (; string[idx] != '\0'; idx++) {
@@ -140,75 +140,93 @@ bool is_match(Contact *contact, char *pattern) {
     return false;
 }
 
+bool is_valid_search_pattern(char *search_pattern) {
+    if (search_pattern[0] == '\0') {
+        return false;
+    }
 
-int main(int argc, char *argv[]) {
-    // check if the number of arguments is more than 2
+    if (!is_numeric_string(search_pattern)) {
+        return false;
+    }
+
+    if (strlen(search_pattern) > MAX_ARG_LENGTH) {
+        return false;
+    }
+
+    return true;
+}
+
+bool validate_arguments(int argc, char *argv[]) {
     if (argc > MAX_ARG_COUNT) {
-        fprintf(stderr, "Invalid number of arguments. 0-1 arguments allowed.\n");
-        return 1;
+        return false;
     }
 
-    char *search_pattern = nullptr;
     if (argc == MAX_ARG_COUNT) {
-        search_pattern = argv[1];
-
-        // check if the first arguments is not empty
-        if (search_pattern[0] == '\0') {
-            fprintf(stderr, "The first argument cannot be empty.\n");
-            return 1;
-        }
-
-        // check if the first argument is numeric
-        if (!is_numeric_string(search_pattern)) {
-            fprintf(stderr, "The first argument must be numeric.\n");
-            return 1;
-        }
-
-        // check if the argument length does not exceed the limit
-        if (strlen(search_pattern) > MAX_ARG_LENGTH) {
-            fprintf(stderr, "Argument is too long. 1-100 numbers allowed.\n");
-            return 1;
+        char *search_pattern = argv[1];
+        if (!is_valid_search_pattern(search_pattern)) {
+            return false;
         }
     }
 
-    Contact contacts[MAX_CONTACTS];
-    int matching_contact_idx = 0;
-    int loaded_contacts = 0;
-    int return_code;
+    return true;
+}
 
-    while ((return_code = load_contact(&contacts[matching_contact_idx])) != -1) {
+// returns the number of matching contacts or a negative error code on failure
+int process_contacts(Contact contacts[MAX_CONTACTS], char *search_pattern) {
+    int matching_contact_count = 0;
+    int return_code;
+    int loaded_contacts = 0;
+
+    while ((return_code = load_contact(&contacts[matching_contact_count])) != -1) {
         if (return_code == 1) {
-            fprintf(stderr, "Error loading contact.\n");
-            return 1;
+            return -1;
         }
 
-        if (!is_valid_contact(&contacts[matching_contact_idx])) {
-            fprintf(stderr, "Invalid contact.\n");
-            return 1;
+        if (!is_valid_contact(&contacts[matching_contact_count])) {
+            return -1;
         }
 
         // if loaded contact matches the pattern, increment the index
-        // if not, override the contact on that index
-        if (is_match(&contacts[matching_contact_idx], search_pattern)) {
-            matching_contact_idx++;
+        // if not, overwrite the contact on that index
+        if (is_match(&contacts[matching_contact_count], search_pattern)) {
+            matching_contact_count++;
         }
 
         loaded_contacts++;
         if (loaded_contacts == MAX_CONTACTS) {
-            // print on stderr if theres more contacts on stdin than supported
+            // return an error code if theres more contacts on stdin than supported
             if (fgetc(stdin) != EOF) {
-                fprintf(stderr, "Contact capacity exceeded. 0 - %d contacts supported.\n", MAX_CONTACTS);
-                return 1;
+                return -1;
             }
             break;
         }
     }
 
-    for (int idx = 0; idx < matching_contact_idx; idx++) {
+    return matching_contact_count;
+}
+
+int main(int argc, char *argv[]) {
+    if (!validate_arguments(argc, argv)) {
+        fprintf(stderr, "Invalid arguments.\n");
+        return 1;
+    }
+
+    char *search_pattern = argc == MAX_ARG_COUNT ? argv[1] : nullptr;
+
+    Contact contacts[MAX_CONTACTS];
+
+    int matching_contact_count = process_contacts(contacts, search_pattern);
+
+    if (matching_contact_count == -1) {
+        fprintf(stderr, "Error processing contacts.\n");
+        return 1;
+    }
+
+    for (int idx = 0; idx < matching_contact_count; idx++) {
         printf("%s, %s\n", contacts[idx].name, contacts[idx].phone);
     }
 
-    if (matching_contact_idx == 0 && search_pattern != nullptr) {
+    if (matching_contact_count == 0 && search_pattern != nullptr) {
         printf("Not found\n");
     }
 
